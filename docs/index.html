@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DartsApp">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>ダーツ上達確認アプリ</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#1a1a1a;color:#f0ede0;font-family:'Helvetica Neue',Arial,sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  }
+  #header{
+    width:100%;max-width:700px;display:flex;align-items:center;justify-content:space-between;
+    padding:10px 14px;background:#111;border-bottom:1px solid #333;
+  }
+  #header h1{font-size:16px;font-weight:700;color:#f0ede0}
+  #lang-btn{
+    background:#2980b9;color:#fff;border:none;border-radius:6px;
+    padding:6px 14px;font-size:13px;cursor:pointer;
+  }
+  #lang-btn:active{background:#1a6fa8}
+
+  #main{width:100%;max-width:700px;padding:10px 10px 20px;display:flex;flex-direction:column;gap:12px}
+
+  /* ラウンド表示 */
+  #round-label{
+    text-align:center;font-size:15px;font-weight:700;
+    background:#222;border-radius:8px;padding:8px;color:#7ec8e3;
+  }
+
+  /* キャンバス */
+  #canvas-wrap{display:flex;justify-content:center}
+  #board{
+    border-radius:50%;cursor:crosshair;
+    touch-action:none;
+    max-width:100%;height:auto;
+  }
+
+  /* 記録欄 */
+  .record-box{background:#222;border-radius:8px;padding:10px 12px}
+  .record-box h3{font-size:13px;color:#aaa;margin-bottom:6px}
+  .throws-list{list-style:none;display:flex;flex-direction:column;gap:4px}
+  .throw-item{
+    display:flex;align-items:center;gap:8px;
+    padding:5px 8px;border-radius:5px;font-size:13px;cursor:pointer;
+    background:#2a2a2a;border:2px solid transparent;transition:border-color .15s;
+  }
+  .throw-item.editing{border-color:#f0c030;background:#332e00}
+  .throw-item .num{
+    width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;flex-shrink:0;
+  }
+  .throw-item .num.r1{background:#c00;color:#fff}
+  .throw-item .num.r2{background:#1144cc;color:#fff}
+  .throw-item .val{flex:1}
+  .throw-item .miss-tag{color:#e74c3c;font-weight:700}
+  .throw-item .edit-hint{font-size:11px;color:#888;flex-shrink:0}
+
+  /* 結果 */
+  #result-box{
+    background:#222;border-radius:8px;padding:12px;
+    font-size:14px;line-height:1.8;white-space:pre-wrap;
+    min-height:120px;color:#f0ede0;
+  }
+  #result-box.has-result{color:#7ec8e3}
+
+  /* ボタン */
+  .btn{
+    width:100%;padding:12px;border:none;border-radius:8px;
+    font-size:15px;font-weight:700;cursor:pointer;
+    background:#2980b9;color:#fff;
+  }
+  .btn:active{background:#1a6fa8}
+  .btn:disabled{background:#444;color:#888;cursor:default}
+  .btn.danger{background:#c0392b}
+  .btn.danger:active{background:#96281b}
+
+  #save-btn{background:#27ae60}
+  #save-btn:active{background:#1e8449}
+
+  /* トースト */
+  #toast{
+    position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+    background:#333;color:#fff;padding:10px 20px;border-radius:20px;
+    font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;
+    white-space:nowrap;z-index:100;
+  }
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1 id="app-title">ダーツ上達確認アプリ</h1>
+  <button id="lang-btn">EN</button>
+</div>
+
+<div id="main">
+  <div id="round-label">Round 1 の投げを入力してください（1/3）</div>
+
+  <div id="canvas-wrap">
+    <canvas id="board" width="480" height="480"></canvas>
+  </div>
+
+  <div class="record-box">
+    <h3 id="r1-title">Round 1 記録</h3>
+    <ul class="throws-list" id="r1-list"></ul>
+  </div>
+
+  <div class="record-box">
+    <h3 id="r2-title">Round 2 記録</h3>
+    <ul class="throws-list" id="r2-list"></ul>
+  </div>
+
+  <div id="result-box"></div>
+
+  <button class="btn" id="save-btn" disabled>Excel に保存</button>
+  <button class="btn danger" id="reset-btn">リセット</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// =====================
+// 多言語テキスト
+// =====================
+const STRINGS = {
+  ja: {
+    appTitle: 'ダーツ上達確認アプリ',
+    langBtn: 'EN',
+    r1Title: 'Round 1 記録',
+    r2Title: 'Round 2 記録',
+    saveBtn: 'Excel に保存',
+    resetBtn: 'リセット',
+    round1Prompt: n => `Round 1 の投げを入力してください（${n}/3）`,
+    round2Prompt: n => `Round 2 の投げを入力してください（${n}/3）`,
+    complete: 'Round 2 完了！結果を確認してください。',
+    throwN: n => `投 ${n}`,
+    miss: 'ミス',
+    editHint: '(クリックで修正)',
+    editMode: '修正モード：次のクリックで上書き',
+    resultLines: (r1, r2, imp) => [
+      `◆ 結果`,
+      `Round 1 グルーピング半径: ${r1.toFixed(1)} mm`,
+      `Round 2 グルーピング半径: ${r2.toFixed(1)} mm`,
+      imp >= 0
+        ? `改善率: ${imp.toFixed(1)} %（上達しました！）`
+        : `改善率: ${Math.abs(imp).toFixed(1)} %（悪化しました）`,
+    ].join('\n'),
+    saved: 'Excel を保存しました',
+    resetConfirm: 'データをリセットします。よろしいですか？',
+    sheetName: 'ダーツ記録',
+    headerRound: 'ラウンド', headerThrow: '投番号',
+    headerX: 'X座標(mm)', headerY: 'Y座標(mm)',
+    headerRadius: 'グルーピング半径(mm)', headerImprove: '改善率(%)',
+  },
+  en: {
+    appTitle: 'Darts Progress Tracker',
+    langBtn: '日本語',
+    r1Title: 'Round 1 Record',
+    r2Title: 'Round 2 Record',
+    saveBtn: 'Save to Excel',
+    resetBtn: 'Reset',
+    round1Prompt: n => `Enter Round 1 throw (${n}/3)`,
+    round2Prompt: n => `Enter Round 2 throw (${n}/3)`,
+    complete: 'Round 2 complete! Check your results below.',
+    throwN: n => `Throw ${n}`,
+    miss: 'Miss',
+    editHint: '(click to edit)',
+    editMode: 'Edit mode: next click overwrites this throw',
+    resultLines: (r1, r2, imp) => [
+      '◆ Results',
+      `Round 1 grouping radius: ${r1.toFixed(1)} mm`,
+      `Round 2 grouping radius: ${r2.toFixed(1)} mm`,
+      imp >= 0
+        ? `Improvement: ${imp.toFixed(1)} % (You improved!)`
+        : `Change: −${Math.abs(imp).toFixed(1)} % (Got worse)`,
+    ].join('\n'),
+    saved: 'Excel saved successfully',
+    resetConfirm: 'Reset all data?',
+    sheetName: 'Darts Record',
+    headerRound: 'Round', headerThrow: 'Throw',
+    headerX: 'X(mm)', headerY: 'Y(mm)',
+    headerRadius: 'Grouping Radius(mm)', headerImprove: 'Improvement(%)',
+  }
+};
+
+// =====================
+// 状態
+// =====================
+let lang = 'ja';
+let throws = { 1: [], 2: [] };  // [{xMm, yMm, xPx, yPx, isMiss}]
+let currentRound = 1;
+let editTarget = null;          // {round, idx} or null
+
+// =====================
+// キャンバス定数
+// =====================
+const CANVAS_SIZE = 480;
+const CX = CANVAS_SIZE / 2;
+const CY = CANVAS_SIZE / 2;
+const R_DBL_OUT   = 212;
+const R_DBL_IN    = 196;
+const R_TRIPLE_OUT= 133;
+const R_TRIPLE_IN = 124;
+const R_OUTER_BULL= 20;
+const R_BULL_EYE  = 8;
+const MISS_MM     = 300;
+const PX_TO_MM    = 170.0 / R_DBL_OUT;  // px → mm 変換係数
+
+const SEG_DARK  = '#1a1a1a';
+const SEG_LIGHT = '#f0ede0';
+const RING_RED  = '#cc2200';
+const RING_BLUE = '#1144cc';
+const WIRE_COL  = '#888';
+const NUMBERS   = [20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
+
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+
+// =====================
+// ダーツボード描画
+// =====================
+function drawBoard() {
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  const scale = R_DBL_OUT;
+
+  function r(mm) { return mm / PX_TO_MM; }
+
+  // 20セグメント
+  for (let i = 0; i < 20; i++) {
+    const a0 = (i * 18 - 9) * Math.PI / 180;
+    const a1 = ((i + 1) * 18 - 9) * Math.PI / 180;
+    const isEven = i % 2 === 0;
+
+    // 外側ダブルリング外 〜 ボード外縁
+    drawSegment(a0, a1, r(R_DBL_OUT + 10), r(R_DBL_OUT + 30), isEven ? '#222' : '#333');
+
+    // シングル外（ダブル外側〜トリプル外側）
+    drawSegment(a0, a1, r(R_TRIPLE_OUT), r(R_DBL_IN), isEven ? SEG_DARK : SEG_LIGHT);
+
+    // ダブルリング
+    drawSegment(a0, a1, r(R_DBL_IN), r(R_DBL_OUT), isEven ? RING_RED : RING_BLUE);
+
+    // トリプルリング
+    drawSegment(a0, a1, r(R_TRIPLE_IN), r(R_TRIPLE_OUT), isEven ? RING_RED : RING_BLUE);
+
+    // シングル内（トリプル内側〜アウターブル）
+    drawSegment(a0, a1, r(R_OUTER_BULL), r(R_TRIPLE_IN), isEven ? SEG_DARK : SEG_LIGHT);
+  }
+
+  // アウターブル（緑）
+  ctx.beginPath();
+  ctx.arc(CX, CY, r(R_OUTER_BULL), 0, Math.PI * 2);
+  ctx.fillStyle = '#1a7a1a';
+  ctx.fill();
+
+  // ブルズアイ（赤）
+  ctx.beginPath();
+  ctx.arc(CX, CY, r(R_BULL_EYE), 0, Math.PI * 2);
+  ctx.fillStyle = '#cc2200';
+  ctx.fill();
+
+  // ワイヤー（リング境界線）
+  [R_DBL_OUT, R_DBL_IN, R_TRIPLE_OUT, R_TRIPLE_IN, R_OUTER_BULL, R_BULL_EYE].forEach(rm => {
+    ctx.beginPath();
+    ctx.arc(CX, CY, r(rm), 0, Math.PI * 2);
+    ctx.strokeStyle = WIRE_COL;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // セグメント境界線
+  for (let i = 0; i < 20; i++) {
+    const a = (i * 18 - 9) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(CX + r(R_OUTER_BULL) * Math.cos(a), CY + r(R_OUTER_BULL) * Math.sin(a));
+    ctx.lineTo(CX + r(R_DBL_OUT) * Math.cos(a), CY + r(R_DBL_OUT) * Math.sin(a));
+    ctx.strokeStyle = WIRE_COL;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // 数字
+  ctx.font = `bold ${r(14)}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < 20; i++) {
+    const a = i * 18 * Math.PI / 180;
+    const nr = r(R_DBL_OUT + 18);
+    const x = CX + nr * Math.cos(a);
+    const y = CY + nr * Math.sin(a);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(NUMBERS[i], x, y);
+  }
+
+  // 投げマーカーとグルーピング円を描画
+  drawThrows();
+}
+
+function drawSegment(a0, a1, r0, r1, color) {
+  ctx.beginPath();
+  ctx.arc(CX, CY, r1, a0, a1);
+  ctx.arc(CX, CY, r0, a1, a0, true);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+// =====================
+// マーカー描画
+// =====================
+function drawThrows() {
+  [1, 2].forEach(round => {
+    throws[round].forEach((t, idx) => {
+      if (t.isMiss) return; // ミスはキャンバスに描かない
+      const color = round === 1 ? '#ff4444' : '#4488ff';
+      const isEditing = editTarget && editTarget.round === round && editTarget.idx === idx;
+
+      ctx.beginPath();
+      ctx.arc(t.xPx, t.yPx, isEditing ? 7 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = isEditing ? '#f0c030' : color;
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.font = 'bold 11px Arial';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(idx + 1, t.xPx, t.yPx);
+    });
+
+    // グルーピング円
+    if (throws[round].length === 3) {
+      const valid = throws[round].filter(t => !t.isMiss);
+      if (valid.length < 1) return;
+      const cx = valid.reduce((s, t) => s + t.xMm, 0) / valid.length;
+      const cy = valid.reduce((s, t) => s + t.yMm, 0) / valid.length;
+      const allMm = throws[round].map(t => ({ xMm: t.xMm, yMm: t.yMm }));
+      const radius = groupingRadius(allMm);
+      if (radius <= 0) return;
+
+      const cxPx = CX + cx / PX_TO_MM;
+      const cyPx = CY + cy / PX_TO_MM;
+      const rPx  = radius / PX_TO_MM;
+
+      ctx.beginPath();
+      ctx.arc(cxPx, cyPx, rPx, 0, Math.PI * 2);
+      ctx.strokeStyle = round === 1 ? '#ff8888' : '#88aaff';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 重心マーク
+      ctx.beginPath();
+      ctx.arc(cxPx, cyPx, 3, 0, Math.PI * 2);
+      ctx.fillStyle = round === 1 ? '#ff8888' : '#88aaff';
+      ctx.fill();
+    }
+  });
+}
+
+// =====================
+// グルーピング半径計算
+// =====================
+function groupingRadius(points) {
+  if (points.length === 0) return 0;
+  const cx = points.reduce((s, p) => s + p.xMm, 0) / points.length;
+  const cy = points.reduce((s, p) => s + p.yMm, 0) / points.length;
+  return Math.max(...points.map(p => Math.hypot(p.xMm - cx, p.yMm - cy)));
+}
+
+// =====================
+// UI 更新
+// =====================
+function S() { return STRINGS[lang]; }
+
+function updateTexts() {
+  const s = S();
+  document.getElementById('app-title').textContent = s.appTitle;
+  document.getElementById('lang-btn').textContent = s.langBtn;
+  document.getElementById('r1-title').textContent = s.r1Title;
+  document.getElementById('r2-title').textContent = s.r2Title;
+  document.getElementById('save-btn').textContent = s.saveBtn;
+  document.getElementById('reset-btn').textContent = s.resetBtn;
+  updateRoundLabel();
+  renderLists();
+}
+
+function updateRoundLabel() {
+  const s = S();
+  const el = document.getElementById('round-label');
+  const done1 = throws[1].length === 3;
+  const done2 = throws[2].length === 3;
+
+  if (editTarget) {
+    el.textContent = s.editMode;
+    return;
+  }
+  if (done2) {
+    el.textContent = s.complete;
+    return;
+  }
+  if (!done1) {
+    el.textContent = s.round1Prompt(throws[1].length + 1);
+  } else {
+    el.textContent = s.round2Prompt(throws[2].length + 1);
+  }
+}
+
+function renderLists() {
+  const s = S();
+  [1, 2].forEach(round => {
+    const ul = document.getElementById(`r${round}-list`);
+    ul.innerHTML = '';
+    throws[round].forEach((t, idx) => {
+      const li = document.createElement('li');
+      li.className = 'throw-item' + (editTarget && editTarget.round === round && editTarget.idx === idx ? ' editing' : '');
+      li.innerHTML = `
+        <span class="num r${round}">${idx + 1}</span>
+        <span class="val">${s.throwN(idx + 1)}: ${t.isMiss ? `<span class="miss-tag">${s.miss}</span>` : `${t.xMm.toFixed(1)}, ${t.yMm.toFixed(1)} mm`}</span>
+        <span class="edit-hint">${s.editHint}</span>
+      `;
+      li.addEventListener('click', () => onLabelClick(round, idx));
+      ul.appendChild(li);
+    });
+  });
+}
+
+function showResult() {
+  const s = S();
+  const r1 = groupingRadius(throws[1].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
+  const r2 = groupingRadius(throws[2].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
+  const imp = r1 > 0 ? (r1 - r2) / r1 * 100 : 0;
+  const box = document.getElementById('result-box');
+  box.textContent = s.resultLines(r1, r2, imp);
+  box.classList.add('has-result');
+  document.getElementById('save-btn').disabled = false;
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// =====================
+// イベント：キャンバスクリック
+// =====================
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CANVAS_SIZE / rect.width;
+  const scaleY = CANVAS_SIZE / rect.height;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+function onCanvasInput(e) {
+  e.preventDefault();
+  const { x, y } = getCanvasPos(e);
+  const dx = x - CX;
+  const dy = y - CY;
+  const distPx = Math.hypot(dx, dy);
+  const distMm = distPx * PX_TO_MM;
+  const isMiss = distMm > 170;
+
+  const xMm = isMiss ? MISS_MM : dx * PX_TO_MM;
+  const yMm = isMiss ? 0        : dy * PX_TO_MM;
+
+  const entry = { xMm, yMm, xPx: x, yPx: y, isMiss };
+
+  if (editTarget) {
+    const { round, idx } = editTarget;
+    throws[round][idx] = entry;
+    editTarget = null;
+  } else {
+    const round = throws[1].length < 3 ? 1 : 2;
+    if (throws[round].length >= 3) return;
+    throws[round].push(entry);
+
+    // Round 1 完了 → 自動でRound 2へ
+    if (round === 1 && throws[1].length === 3) {
+      currentRound = 2;
+    }
+    // Round 2 完了 → 結果表示
+    if (round === 2 && throws[2].length === 3) {
+      showResult();
+    }
+  }
+
+  drawBoard();
+  renderLists();
+  updateRoundLabel();
+}
+
+canvas.addEventListener('click', onCanvasInput);
+canvas.addEventListener('touchstart', onCanvasInput, { passive: false });
+
+// =====================
+// イベント：記録ラベルクリック（編集）
+// =====================
+function onLabelClick(round, idx) {
+  if (editTarget && editTarget.round === round && editTarget.idx === idx) {
+    editTarget = null;
+  } else {
+    editTarget = { round, idx };
+  }
+  drawBoard();
+  renderLists();
+  updateRoundLabel();
+}
+
+// =====================
+// 言語切り替え
+// =====================
+document.getElementById('lang-btn').addEventListener('click', () => {
+  lang = lang === 'ja' ? 'en' : 'ja';
+  document.documentElement.lang = lang;
+  updateTexts();
+  // 結果表示中なら再描画
+  if (throws[1].length === 3 && throws[2].length === 3) showResult();
+});
+
+// =====================
+// リセット
+// =====================
+document.getElementById('reset-btn').addEventListener('click', () => {
+  if (!confirm(S().resetConfirm)) return;
+  doReset();
+});
+
+function doReset() {
+  throws = { 1: [], 2: [] };
+  currentRound = 1;
+  editTarget = null;
+  document.getElementById('result-box').textContent = '';
+  document.getElementById('result-box').classList.remove('has-result');
+  document.getElementById('save-btn').disabled = true;
+  drawBoard();
+  renderLists();
+  updateRoundLabel();
+}
+
+// =====================
+// Excel 保存（SheetJS）
+// =====================
+document.getElementById('save-btn').addEventListener('click', () => {
+  const s = S();
+  const wb = XLSX.utils.book_new();
+
+  const rows = [[s.headerRound, s.headerThrow, s.headerX, s.headerY, s.headerRadius, s.headerImprove]];
+
+  [1, 2].forEach(round => {
+    throws[round].forEach((t, i) => {
+      const radius = i === 2
+        ? groupingRadius(throws[round].map(p => ({ xMm: p.xMm, yMm: p.yMm }))).toFixed(2)
+        : '';
+      rows.push([
+        `Round ${round}`,
+        i + 1,
+        t.isMiss ? s.miss : t.xMm.toFixed(2),
+        t.isMiss ? s.miss : t.yMm.toFixed(2),
+        radius,
+        '',
+      ]);
+    });
+  });
+
+  // 改善率
+  const r1 = groupingRadius(throws[1].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
+  const r2 = groupingRadius(throws[2].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
+  const imp = r1 > 0 ? ((r1 - r2) / r1 * 100).toFixed(2) : '';
+  rows.push(['', '', '', '', '', imp]);
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, s.sheetName);
+
+  const now = new Date();
+  const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `darts_${ts}.xlsx`);
+
+  showToast(S().saved);
+  setTimeout(() => doReset(), 1500);
+});
+
+// =====================
+// PWA サービスワーカー登録
+// =====================
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+// =====================
+// 初期描画
+// =====================
+drawBoard();
+updateTexts();
+</script>
+</body>
+</html>
