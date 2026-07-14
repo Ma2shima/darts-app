@@ -106,7 +106,7 @@
   <div id="round-label">Round 1 の投げを入力してください（1/3）</div>
 
   <div id="canvas-wrap">
-    <canvas id="board" width="500" height="500"></canvas>
+    <canvas id="board" width="1000" height="1000"></canvas>
   </div>
 
   <div class="record-box">
@@ -204,7 +204,7 @@ let editTarget = null;          // {round, idx} or null
 // =====================
 // キャンバス定数
 // =====================
-const CANVAS_SIZE = 500;
+const CANVAS_SIZE = 1000;
 const CX = CANVAS_SIZE / 2;
 const CY = CANVAS_SIZE / 2;
 
@@ -344,14 +344,14 @@ function drawThrows() {
       const isEditing = editTarget && editTarget.round === round && editTarget.idx === idx;
 
       ctx.beginPath();
-      ctx.arc(t.xPx, t.yPx, isEditing ? 7 : 5, 0, Math.PI * 2);
+      ctx.arc(t.xPx, t.yPx, isEditing ? 14 : 10, 0, Math.PI * 2);
       ctx.fillStyle = isEditing ? '#f0c030' : color;
       ctx.fill();
       ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 3;
       ctx.stroke();
 
-      ctx.font = 'bold 11px Arial';
+      ctx.font = 'bold 22px Arial';
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -375,14 +375,14 @@ function drawThrows() {
       ctx.beginPath();
       ctx.arc(cxPx, cyPx, rPx, 0, Math.PI * 2);
       ctx.strokeStyle = round === 1 ? '#ff8888' : '#88aaff';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
       ctx.stroke();
       ctx.setLineDash([]);
 
       // 重心マーク
       ctx.beginPath();
-      ctx.arc(cxPx, cyPx, 3, 0, Math.PI * 2);
+      ctx.arc(cxPx, cyPx, 6, 0, Math.PI * 2);
       ctx.fillStyle = round === 1 ? '#ff8888' : '#88aaff';
       ctx.fill();
     }
