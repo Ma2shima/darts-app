@@ -106,7 +106,7 @@
   <div id="round-label">Round 1 の投げを入力してください（1/3）</div>
 
   <div id="canvas-wrap">
-    <canvas id="board" width="480" height="480"></canvas>
+    <canvas id="board" width="500" height="500"></canvas>
   </div>
 
   <div class="record-box">
@@ -204,17 +204,25 @@ let editTarget = null;          // {round, idx} or null
 // =====================
 // キャンバス定数
 // =====================
-const CANVAS_SIZE = 480;
+const CANVAS_SIZE = 500;
 const CX = CANVAS_SIZE / 2;
 const CY = CANVAS_SIZE / 2;
-const R_DBL_OUT   = 212;
-const R_DBL_IN    = 196;
-const R_TRIPLE_OUT= 133;
-const R_TRIPLE_IN = 124;
-const R_OUTER_BULL= 20;
-const R_BULL_EYE  = 8;
+
+// WDF規格値（mm）
+const R_DBL_OUT_MM   = 170;
+const R_DBL_IN_MM    = 157;
+const R_TRIPLE_OUT_MM= 107;
+const R_TRIPLE_IN_MM = 99;
+const R_OUTER_BULL_MM= 16;
+const R_BULL_EYE_MM  = 6.35;
+const R_NUMBER_MM    = 195;  // 数字を描く位置（ボード外縁内側）
+
+// ボード全体がキャンバスに収まるよう px/mm スケールを計算
+// 数字エリアまで含めて収める（R_NUMBER_MM + 余白）
+const BOARD_RADIUS_PX = CANVAS_SIZE / 2 - 4;  // キャンバス端から4px余白
+const PX_PER_MM = BOARD_RADIUS_PX / R_NUMBER_MM;
+
 const MISS_MM     = 300;
-const PX_TO_MM    = 170.0 / R_DBL_OUT;  // px → mm 変換係数
 
 const SEG_DARK  = '#1a1a1a';
 const SEG_LIGHT = '#f0ede0';
@@ -229,50 +237,59 @@ const ctx = canvas.getContext('2d');
 // =====================
 // ダーツボード描画
 // =====================
+function mm(v) { return v * PX_PER_MM; }  // mm → px
+
 function drawBoard() {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-  const scale = R_DBL_OUT;
 
-  function r(mm) { return mm / PX_TO_MM; }
+  // 背景（ボード外は黒）
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  // 20セグメント
+  // ダブルリング外縁の円でクリッピング（はみ出し防止）
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX, CY, mm(R_DBL_OUT_MM), 0, Math.PI * 2);
+  ctx.clip();
+
+  // 20セグメント（ダブルリング外縁まで）
+  // 20番を真上(−90°)に配置: オフセット = −90° − 9°（セグメント半幅）
   for (let i = 0; i < 20; i++) {
-    const a0 = (i * 18 - 9) * Math.PI / 180;
-    const a1 = ((i + 1) * 18 - 9) * Math.PI / 180;
+    const a0 = (i * 18 - 99) * Math.PI / 180;
+    const a1 = (i * 18 - 81) * Math.PI / 180;
     const isEven = i % 2 === 0;
 
-    // 外側ダブルリング外 〜 ボード外縁
-    drawSegment(a0, a1, r(R_DBL_OUT + 10), r(R_DBL_OUT + 30), isEven ? '#222' : '#333');
-
-    // シングル外（ダブル外側〜トリプル外側）
-    drawSegment(a0, a1, r(R_TRIPLE_OUT), r(R_DBL_IN), isEven ? SEG_DARK : SEG_LIGHT);
+    // シングル外（ダブル内側〜トリプル外側）
+    drawSegment(a0, a1, mm(R_TRIPLE_OUT_MM), mm(R_DBL_IN_MM), isEven ? SEG_DARK : SEG_LIGHT);
 
     // ダブルリング
-    drawSegment(a0, a1, r(R_DBL_IN), r(R_DBL_OUT), isEven ? RING_RED : RING_BLUE);
+    drawSegment(a0, a1, mm(R_DBL_IN_MM), mm(R_DBL_OUT_MM), isEven ? RING_RED : RING_BLUE);
 
     // トリプルリング
-    drawSegment(a0, a1, r(R_TRIPLE_IN), r(R_TRIPLE_OUT), isEven ? RING_RED : RING_BLUE);
+    drawSegment(a0, a1, mm(R_TRIPLE_IN_MM), mm(R_TRIPLE_OUT_MM), isEven ? RING_RED : RING_BLUE);
 
     // シングル内（トリプル内側〜アウターブル）
-    drawSegment(a0, a1, r(R_OUTER_BULL), r(R_TRIPLE_IN), isEven ? SEG_DARK : SEG_LIGHT);
+    drawSegment(a0, a1, mm(R_OUTER_BULL_MM), mm(R_TRIPLE_IN_MM), isEven ? SEG_DARK : SEG_LIGHT);
   }
+
+  ctx.restore();  // クリッピング解除
 
   // アウターブル（緑）
   ctx.beginPath();
-  ctx.arc(CX, CY, r(R_OUTER_BULL), 0, Math.PI * 2);
+  ctx.arc(CX, CY, mm(R_OUTER_BULL_MM), 0, Math.PI * 2);
   ctx.fillStyle = '#1a7a1a';
   ctx.fill();
 
   // ブルズアイ（赤）
   ctx.beginPath();
-  ctx.arc(CX, CY, r(R_BULL_EYE), 0, Math.PI * 2);
+  ctx.arc(CX, CY, mm(R_BULL_EYE_MM), 0, Math.PI * 2);
   ctx.fillStyle = '#cc2200';
   ctx.fill();
 
   // ワイヤー（リング境界線）
-  [R_DBL_OUT, R_DBL_IN, R_TRIPLE_OUT, R_TRIPLE_IN, R_OUTER_BULL, R_BULL_EYE].forEach(rm => {
+  [R_DBL_OUT_MM, R_DBL_IN_MM, R_TRIPLE_OUT_MM, R_TRIPLE_IN_MM, R_OUTER_BULL_MM, R_BULL_EYE_MM].forEach(rmm => {
     ctx.beginPath();
-    ctx.arc(CX, CY, r(rm), 0, Math.PI * 2);
+    ctx.arc(CX, CY, mm(rmm), 0, Math.PI * 2);
     ctx.strokeStyle = WIRE_COL;
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -280,22 +297,23 @@ function drawBoard() {
 
   // セグメント境界線
   for (let i = 0; i < 20; i++) {
-    const a = (i * 18 - 9) * Math.PI / 180;
+    const a = (i * 18 - 99) * Math.PI / 180;
     ctx.beginPath();
-    ctx.moveTo(CX + r(R_OUTER_BULL) * Math.cos(a), CY + r(R_OUTER_BULL) * Math.sin(a));
-    ctx.lineTo(CX + r(R_DBL_OUT) * Math.cos(a), CY + r(R_DBL_OUT) * Math.sin(a));
+    ctx.moveTo(CX + mm(R_OUTER_BULL_MM) * Math.cos(a), CY + mm(R_OUTER_BULL_MM) * Math.sin(a));
+    ctx.lineTo(CX + mm(R_DBL_OUT_MM) * Math.cos(a), CY + mm(R_DBL_OUT_MM) * Math.sin(a));
     ctx.strokeStyle = WIRE_COL;
     ctx.lineWidth = 1;
     ctx.stroke();
   }
 
-  // 数字
-  ctx.font = `bold ${r(14)}px Arial`;
+  // 数字（ダブルリング外縁の外側）
+  const fontSize = Math.max(12, mm(11));
+  ctx.font = `bold ${fontSize}px Arial`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (let i = 0; i < 20; i++) {
-    const a = i * 18 * Math.PI / 180;
-    const nr = r(R_DBL_OUT + 18);
+    const a = (i * 18 - 90) * Math.PI / 180;
+    const nr = mm(R_NUMBER_MM);
     const x = CX + nr * Math.cos(a);
     const y = CY + nr * Math.sin(a);
     ctx.fillStyle = '#fff';
@@ -350,9 +368,9 @@ function drawThrows() {
       const radius = groupingRadius(allMm);
       if (radius <= 0) return;
 
-      const cxPx = CX + cx / PX_TO_MM;
-      const cyPx = CY + cy / PX_TO_MM;
-      const rPx  = radius / PX_TO_MM;
+      const cxPx = CX + cx * PX_PER_MM;
+      const cyPx = CY + cy * PX_PER_MM;
+      const rPx  = radius * PX_PER_MM;
 
       ctx.beginPath();
       ctx.arc(cxPx, cyPx, rPx, 0, Math.PI * 2);
@@ -477,11 +495,11 @@ function onCanvasInput(e) {
   const dx = x - CX;
   const dy = y - CY;
   const distPx = Math.hypot(dx, dy);
-  const distMm = distPx * PX_TO_MM;
-  const isMiss = distMm > 170;
+  const distMm = distPx / PX_PER_MM;
+  const isMiss = distMm > R_DBL_OUT_MM;
 
-  const xMm = isMiss ? MISS_MM : dx * PX_TO_MM;
-  const yMm = isMiss ? 0        : dy * PX_TO_MM;
+  const xMm = isMiss ? MISS_MM : dx / PX_PER_MM;
+  const yMm = isMiss ? 0        : dy / PX_PER_MM;
 
   const entry = { xMm, yMm, xPx: x, yPx: y, isMiss };
 
