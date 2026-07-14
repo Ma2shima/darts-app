@@ -1,0 +1,72 @@
+name: Build DartsApp (Mac & Windows)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # 手動実行ボタン
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyinstaller openpyxl
+
+      - name: Build .app
+        run: |
+          pyinstaller --windowed \
+            --name "DartsApp" \
+            --icon darts.icns \
+            -y \
+            darts_app.py
+
+      - name: Zip .app
+        run: |
+          cd dist
+          zip -r ../DartsApp_Mac.zip DartsApp.app
+
+      - name: Upload Mac artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DartsApp_Mac
+          path: DartsApp_Mac.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyinstaller openpyxl
+
+      - name: Build .exe
+        run: |
+          pyinstaller --windowed `
+            --name "DartsApp" `
+            --icon darts.ico `
+            --onefile `
+            -y `
+            darts_app.py
+
+      - name: Zip .exe
+        run: |
+          cd dist
+          Compress-Archive -Path DartsApp.exe -DestinationPath ..\DartsApp_Windows.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DartsApp_Windows
+          path: DartsApp_Windows.zip
