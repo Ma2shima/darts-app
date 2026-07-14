@@ -235,11 +235,10 @@ const R_TRIPLE_OUT_MM= 107;
 const R_TRIPLE_IN_MM = 99;
 const R_OUTER_BULL_MM= 16;
 const R_BULL_EYE_MM  = 6.35;
-const R_NUMBER_MM    = 195;  // 数字を描く位置（ボード外縁内側）
+const R_NUMBER_MM    = 186;  // 数字を描く位置（ダブルリング外縁寄り）
 
-// ボード全体がキャンバスに収まるよう px/mm スケールを計算
-// 数字エリアまで含めて収める（R_NUMBER_MM + 余白）
-const BOARD_RADIUS_PX = CANVAS_SIZE / 2 - 4;  // キャンバス端から4px余白
+// 数字の外縁（R_NUMBER_MM + フォント半径分）がキャンバスに収まるよう余白を確保
+const BOARD_RADIUS_PX = CANVAS_SIZE / 2 - 30;  // 端から30px余白（数字の高さ分）
 const PX_PER_MM = BOARD_RADIUS_PX / R_NUMBER_MM;
 
 const MISS_MM     = 300;
