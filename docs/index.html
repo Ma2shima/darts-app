@@ -147,20 +147,30 @@ const STRINGS = {
     miss: 'ミス',
     editHint: '(クリックで修正)',
     editMode: '修正モード：次のクリックで上書き',
-    resultLines: (r1, r2, imp) => [
+    resultLines: (r1, r2, impGroup, c1, c2, impCenter) => [
       `◆ 結果`,
-      `Round 1 グルーピング半径: ${r1.toFixed(1)} mm`,
-      `Round 2 グルーピング半径: ${r2.toFixed(1)} mm`,
-      imp >= 0
-        ? `改善率: ${imp.toFixed(1)} %（上達しました！）`
-        : `改善率: ${Math.abs(imp).toFixed(1)} %（悪化しました）`,
+      ``,
+      `【収束度（3投のまとまり）】`,
+      `Round 1: ${r1.toFixed(1)} mm`,
+      `Round 2: ${r2.toFixed(1)} mm`,
+      impGroup >= 0
+        ? `改善率: ${impGroup.toFixed(1)} %（上達しました！）`
+        : `改善率: ${Math.abs(impGroup).toFixed(1)} %（悪化しました）`,
+      ``,
+      `【中心からの距離（狙いの正確さ）】`,
+      `Round 1: ${c1.toFixed(1)} mm`,
+      `Round 2: ${c2.toFixed(1)} mm`,
+      impCenter >= 0
+        ? `改善率: ${impCenter.toFixed(1)} %（上達しました！）`
+        : `改善率: ${Math.abs(impCenter).toFixed(1)} %（悪化しました）`,
     ].join('\n'),
     saved: 'Excel を保存しました',
     resetConfirm: 'データをリセットします。よろしいですか？',
     sheetName: 'ダーツ記録',
     headerRound: 'ラウンド', headerThrow: '投番号',
     headerX: 'X座標(mm)', headerY: 'Y座標(mm)',
-    headerRadius: 'グルーピング半径(mm)', headerImprove: '改善率(%)',
+    headerRadius: 'グルーピング半径(mm)', headerCenter: '中心距離(mm)',
+    headerImproveGroup: '収束改善率(%)', headerImproveCenter: '中心改善率(%)',
   },
   en: {
     appTitle: 'Darts Progress Tracker',
@@ -176,20 +186,30 @@ const STRINGS = {
     miss: 'Miss',
     editHint: '(click to edit)',
     editMode: 'Edit mode: next click overwrites this throw',
-    resultLines: (r1, r2, imp) => [
+    resultLines: (r1, r2, impGroup, c1, c2, impCenter) => [
       '◆ Results',
-      `Round 1 grouping radius: ${r1.toFixed(1)} mm`,
-      `Round 2 grouping radius: ${r2.toFixed(1)} mm`,
-      imp >= 0
-        ? `Improvement: ${imp.toFixed(1)} % (You improved!)`
-        : `Change: −${Math.abs(imp).toFixed(1)} % (Got worse)`,
+      ``,
+      `[Grouping (how tight the throws are)]`,
+      `Round 1: ${r1.toFixed(1)} mm`,
+      `Round 2: ${r2.toFixed(1)} mm`,
+      impGroup >= 0
+        ? `Improvement: ${impGroup.toFixed(1)} % (You improved!)`
+        : `Change: −${Math.abs(impGroup).toFixed(1)} % (Got worse)`,
+      ``,
+      `[Accuracy (distance from bullseye)]`,
+      `Round 1: ${c1.toFixed(1)} mm`,
+      `Round 2: ${c2.toFixed(1)} mm`,
+      impCenter >= 0
+        ? `Improvement: ${impCenter.toFixed(1)} % (You improved!)`
+        : `Change: −${Math.abs(impCenter).toFixed(1)} % (Got worse)`,
     ].join('\n'),
     saved: 'Excel saved successfully',
     resetConfirm: 'Reset all data?',
     sheetName: 'Darts Record',
     headerRound: 'Round', headerThrow: 'Throw',
     headerX: 'X(mm)', headerY: 'Y(mm)',
-    headerRadius: 'Grouping Radius(mm)', headerImprove: 'Improvement(%)',
+    headerRadius: 'Grouping Radius(mm)', headerCenter: 'Center Distance(mm)',
+    headerImproveGroup: 'Grouping Improvement(%)', headerImproveCenter: 'Accuracy Improvement(%)',
   }
 };
 
@@ -399,6 +419,14 @@ function groupingRadius(points) {
   return Math.max(...points.map(p => Math.hypot(p.xMm - cx, p.yMm - cy)));
 }
 
+// 重心のブル中心（0,0）からの距離
+function centerDistance(points) {
+  if (points.length === 0) return 0;
+  const cx = points.reduce((s, p) => s + p.xMm, 0) / points.length;
+  const cy = points.reduce((s, p) => s + p.yMm, 0) / points.length;
+  return Math.hypot(cx, cy);
+}
+
 // =====================
 // UI 更新
 // =====================
@@ -458,11 +486,16 @@ function renderLists() {
 
 function showResult() {
   const s = S();
-  const r1 = groupingRadius(throws[1].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
-  const r2 = groupingRadius(throws[2].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
-  const imp = r1 > 0 ? (r1 - r2) / r1 * 100 : 0;
+  const pts1 = throws[1].map(t => ({ xMm: t.xMm, yMm: t.yMm }));
+  const pts2 = throws[2].map(t => ({ xMm: t.xMm, yMm: t.yMm }));
+  const r1 = groupingRadius(pts1);
+  const r2 = groupingRadius(pts2);
+  const impGroup  = r1 > 0 ? (r1 - r2) / r1 * 100 : 0;
+  const c1 = centerDistance(pts1);
+  const c2 = centerDistance(pts2);
+  const impCenter = c1 > 0 ? (c1 - c2) / c1 * 100 : 0;
   const box = document.getElementById('result-box');
-  box.textContent = s.resultLines(r1, r2, imp);
+  box.textContent = s.resultLines(r1, r2, impGroup, c1, c2, impCenter);
   box.classList.add('has-result');
   document.getElementById('save-btn').disabled = false;
 }
@@ -582,29 +615,37 @@ document.getElementById('save-btn').addEventListener('click', () => {
   const s = S();
   const wb = XLSX.utils.book_new();
 
-  const rows = [[s.headerRound, s.headerThrow, s.headerX, s.headerY, s.headerRadius, s.headerImprove]];
+  const rows = [[s.headerRound, s.headerThrow, s.headerX, s.headerY, s.headerRadius, s.headerCenter, s.headerImproveGroup, s.headerImproveCenter]];
 
   [1, 2].forEach(round => {
     throws[round].forEach((t, i) => {
-      const radius = i === 2
-        ? groupingRadius(throws[round].map(p => ({ xMm: p.xMm, yMm: p.yMm }))).toFixed(2)
-        : '';
+      const isLast = i === 2;
+      const pts = throws[round].map(p => ({ xMm: p.xMm, yMm: p.yMm }));
+      const radius = isLast ? groupingRadius(pts).toFixed(2) : '';
+      const center = isLast ? centerDistance(pts).toFixed(2) : '';
       rows.push([
         `Round ${round}`,
         i + 1,
         t.isMiss ? s.miss : t.xMm.toFixed(2),
         t.isMiss ? s.miss : t.yMm.toFixed(2),
         radius,
+        center,
+        '',
         '',
       ]);
     });
   });
 
   // 改善率
-  const r1 = groupingRadius(throws[1].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
-  const r2 = groupingRadius(throws[2].map(t => ({ xMm: t.xMm, yMm: t.yMm })));
-  const imp = r1 > 0 ? ((r1 - r2) / r1 * 100).toFixed(2) : '';
-  rows.push(['', '', '', '', '', imp]);
+  const pts1 = throws[1].map(t => ({ xMm: t.xMm, yMm: t.yMm }));
+  const pts2 = throws[2].map(t => ({ xMm: t.xMm, yMm: t.yMm }));
+  const r1 = groupingRadius(pts1);
+  const r2 = groupingRadius(pts2);
+  const c1 = centerDistance(pts1);
+  const c2 = centerDistance(pts2);
+  const impGroup  = r1 > 0 ? ((r1 - r2) / r1 * 100).toFixed(2) : '';
+  const impCenter = c1 > 0 ? ((c1 - c2) / c1 * 100).toFixed(2) : '';
+  rows.push(['', '', '', '', '', '', impGroup, impCenter]);
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   XLSX.utils.book_append_sheet(wb, ws, s.sheetName);
